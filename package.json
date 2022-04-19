@@ -1,0 +1,59 @@
+{
+  "name": "vuesfccompiler",
+  "displayName": "VueSFCCompiler",
+  "description": "Vue-SFC-Compiler",
+  "version": "0.0.5",
+  "icon": "images/icon-1024.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/l00jj/VueSFCCompiler.git"
+  },
+  "publisher": "l00",
+  "keywords": [
+    "vue",
+    "单文件",
+    "编译"
+  ],
+  "engines": {
+    "vscode": "^1.47.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "commands": [
+    {
+      "command": "extension.createVueApp",
+      "title": "Vue单文件自动编译中 [点击]"
+    }
+  ],
+  "activationEvents": [
+    "*",
+    "onView:console-panel",
+    "onCommand:extension.joke"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "appConsole",
+          "title": "控制台",
+          "icon": "images/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "appConsole": [
+        {
+          "id": "console-panel",
+          "name": "插件情况"
+        }
+      ]
+    }
+  },
+  "scripts": {},
+  "dependencies": {
+    "hash-sum": "^2.0.0",
+    "vue": "^3.2.33"
+  }
+}

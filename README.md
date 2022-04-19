@@ -1,4 +1,4 @@
-#VueSFCCompiler
+# VueSFCCompiler
 
 # 如何使用
 ## 建立配置文件

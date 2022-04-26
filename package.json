@@ -2,7 +2,7 @@
   "name": "vuesfccompiler",
   "displayName": "VueSFCCompiler",
   "description": "Vue-SFC-Compiler",
-  "version": "0.0.5",
+  "version": "0.0.4",
   "icon": "images/icon-1024.png",
   "repository": {
     "type": "git",
@@ -20,33 +20,81 @@
   "categories": [
     "Other"
   ],
-  "commands": [
-    {
-      "command": "extension.createVueApp",
-      "title": "Vue单文件自动编译中 [点击]"
-    }
-  ],
   "activationEvents": [
-    "*",
-    "onView:console-panel",
+    "onStartupFinished",
+    "onView:VueSFCCompiler.console",
     "onCommand:extension.joke"
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "settingsSync.memento": {
+      "global": []
+    },
+    "commands": [
+      {
+        "command": "VueSFCCompiler.openConfigsConsole",
+        "title": "[*] 切换ConfigsConsole"
+      },
+      {
+        "command": "VueSFCCompiler.test",
+        "title": "[*] 测试"
+      },
+      {
+        "command": "VueSFCCompiler.clearConfigs",
+        "title": "[-] 清空配置"
+      },
+      {
+        "command": "VueSFCCompiler.addConfig",
+        "title": "刷新",
+        "icon": "$(diff-added)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "when": "view == VueSFCCompiler.sidebar",
+          "group": "navigation",
+          "command": "VueSFCCompiler.addConfig"
+        }
+      ],
+      "explorer/context": [
+        {
+          "when": "!explorerResourceIsFolder && resourceFilename  ==  vuecompiler-config.json",
+          "command": "VueSFCCompiler.addConfig",
+          "group": "6_VueSFCCompiler"
+        },
+        {
+          "command": "VueSFCCompiler.test",
+          "group": "6_VueSFCCompiler"
+        }
+      ]
+    },
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "appConsole",
-          "title": "控制台",
+          "id": "VueSFCCompiler",
+          "title": "VueSFCCompiler",
           "icon": "images/icon.svg"
         }
       ]
     },
     "views": {
-      "appConsole": [
+      "VueSFCCompiler": [
         {
-          "id": "console-panel",
-          "name": "插件情况"
+          "id": "VueSFCCompiler.testPale",
+          "name": "控制面板xxx"
+        },
+        {
+          "id": "VueSFCCompiler.sidebar",
+          "name": "配置"
+        }
+      ],
+      "explorer": [
+        {
+          "id": "VueSFCCompiler.configsConsole",
+          "when": "VueSFCCompiler.isShowConfigsConsole",
+          "name": "VueSFCCompiler",
+          "icon": "images/icon.svg"
         }
       ]
     }

@@ -1,340 +1,630 @@
-
 const vscode = require('vscode');
 const path = require('path');
 const fs = require('fs/promises');
-/**
- * 插件被激活时触发，所有代码总入口
- * @param {*} context 插件上下文
- */
-/* exports.activate = function (context) {
-  //require('./createVueApp')(context); // vueLoader
-  vscode.window.showInformationMessage('插件 createVueApp 加载成功xxxx');
-}; */
-
-/**
- * 插件被释放时触发
- */
-/* exports.deactivate = function () {
-  vscode.window.showInformationMessage('插件 createVueApp 被释放xxxxx');
-}; */
+const EventEmitter = require('events');
 
 
-//import Provider from './Provider';
-let count = 0
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+class Configs {
+  key_traget = 'configs'
+  emitter = new EventEmitter()
+  constructor(extensionContext) {
+    this.context = extensionContext
+  }
+  clear = () => this.context.globalState.update(this.key_traget, undefined)
+  get = async () => {
+    return await this.context.globalState.get(this.key_traget, [])
+  }
+  update = async (value) => {
+    return await this.context.globalState.update(this.key_traget, value)
+  }
+  add = async (config) => {
+    const lastConfigs = await this.get()
+    /*  //
+     if (!path.isAbsolute(inputPath)) {
+       vscode.window.showWarningMessage('VueSFCCompiler 添加配置无改变: 所选路径需要为绝对路径')
+       return;
+     }
+     //
+     if (lastConfigs.includes(inputPath)) {
+       vscode.window.showWarningMessage('VueSFCCompiler 添加配置无改变: 所选路径已存在')
+     } else {
+       const newConfigs = [...new Set([inputPath, ...lastConfigs])]
+       await this.context.globalState.update(this.key_traget, newConfigs)
+       vscode.window.showInformationMessage('VueSFCCompiler 添加配置成功');
+     } */
+    lastConfigs.push(config)
+    await this.update(lastConfigs)
+    vscode.window.showInformationMessage('VueSFCCompiler 添加配置成功');
+    this.emitter.emit('onChanged', this.add);
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const tool = {
+  async getWebViewContent(extensionPath, webviewPath) {
+    const resourcePath = path.join(extensionPath, webviewPath);
+    const dirPath = path.dirname(resourcePath);
+    const replacePath = inputPath => vscode.Uri.file(path.resolve(dirPath, inputPath))
+      .with({ scheme: 'vscode-resource' }).toString()
+    let html = await fs.readFile(resourcePath, 'utf-8')
+      .catch(e => null)
+    html = html
+      /* //暂不支持 importmap 动态表，页面已生成，无法后插入动态表
+      .replace(/(<script.+?type="importmap".*>)([\s\S]+?)(<\/script>)/g, (m, $1, $2, $3) => {
+        const deepReplace = (input) => {
+          for (let arg in input) {
+            if (typeof input[arg] === "object") deepReplace(input[arg])
+            else if (typeof input[arg] === "string") input[arg] = replacePath(input[arg])
+          }
+        }
+        try {
+          const obj = JSON.parse($2)
+          deepReplace(obj)
+          return $1 + JSON.stringify(obj) + $3
+        } catch (e) {
+          return $1 + $2 + $3
+        }
+      }) */
+      .replace(/(<link.+?href="|<script.+?src="|<img.+?src=")(.+?)"/g, (m, $1, $2) => $1 + replacePath($2) + '"');
+    return html;
+  }
+
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+class App {
+  constructor(extensionContext) {
+    this.context = extensionContext
+    this.configs = new Configs(extensionContext)
+    this.configs.emitter.on('onChanged', this.stateEstimate)
+  }
+
+
+
+
+
+
+
+
+  hasAddConfigView = false
+  key_command_addConfig = "VueSFCCompiler.addConfig"
+  command_addConfig = async () => {
+    if (this.hasAddConfigView) return;
+    this.hasAddConfigView = true
+    // 切换到资源管理器
+    vscode.commands.executeCommand('workbench.view.explorer')
+    // 创建webview
+    const panel = vscode.window.createWebviewPanel('testWebview', "添加配置",
+      vscode.ViewColumn.One, { enableScripts: true, retainContextWhenHidden: true });
+    const html = await tool.getWebViewContent(this.context.extensionPath, '/webview_addConfig/index.html')
+    //console.log(html)
+    panel.webview.html = html
+    //接收信息
+    const onDidReceiveMessage = panel.webview.onDidReceiveMessage(message => {
+      //console.log('插件收到的消息：', message);
+      panel.dispose()
+      this.configs.add(message.config)
+    });
+
+    const onDidDispose = panel.onDidDispose(message => {
+      //console.log("onDidDispose")
+      this.hasAddConfigView = false
+      onDidReceiveMessage.dispose()
+      onDidDispose.dispose()
+    })
+  }
+
+
+
+
+
+
+
+
+
+  key_command_clearConfigs = "VueSFCCompiler.clearConfigs"
+  command_clearConfigs = () => {
+    this.configs.clear()
+  }
+
+
+
+
+
+
+
+
+
+  onWorkspaceFoldersChanged = (changed) => {
+    console.log("onWorkspaceFoldersChanged",changed)
+    this.stateEstimate(onWorkspaceFoldersChanged)
+  }
+
+
+
+
+
+
+
+
+
+  onDidChangeStorage = (changed) => {
+    console.log(changed)
+    vscode.window.showInformationMessage(`onDidChangeStorage ${JSON.stringify(changed.value)}`);
+  }
+
+
+
+
+
+
+
+
+
+  onWillSaveTextDocument = ({ document }) => {
+    const { uri, isDirty, languageId } = document
+    if (!languageId === "vue" || !isDirty) return;//判断是否为vue文件
+    else this.compileVue(uri.fsPath)
+  }
+
+
+
+
+
+
+
+
+
+  compileVue = async (inputVuePath) => {
+    ///////////////////////////////防抖/////////////////////////////////
+    //获取配置列表
+    const configs = await this.configs.get()
+    //寻找就近的一个配置文件
+    const configFilePath = configs
+      .sort((a, b) => a.length < b.length)
+      .find(str => inputVuePath.startsWith(path.dirname(str)))
+    ///////////////////////////////升级以下环节，做文件处理的备份，用hashID确认是否需要再次处理/////////////////////////////////
+    //无文件则退出
+    if (!configFilePath) return;
+    const primaryConfigs = await fs.readFile(configFilePath)
+      .then(r => JSON.parse(r))
+      .then(r => Array.isArray(r) ? r : null)
+      .catch(e => null)
+    //无配置则退出
+    if (!primaryConfigs) return;
+    //
+    const configFileDir = path.dirname(configFilePath)
+    //逐个配置寻找配置的路径
+    /*    const config = []
+       primaryConfigs.forEach(item => {
+         try {
+           item.rootDir = configFileDir
+   
+         } catch {
+   
+         }
+       });
+       const rootDir =
+       const outDir =
+   
+       //检测 rootDir 和 outDir 是否冲突
+       if () */
+    console.log(config)
+    /* 
+  
+  
+    console.log(vscode.workspace.workspaceFolders)
+    const rootPath = vscode.workspace.rootPath //工作区目录
+    const configFileName = 'vuecompiler-config.json'
+    const configFilePath = path.resolve(rootPath, configFileName)
+  
+     */
+
+
+
+    /*  const files = await vueCompiler(document.getText(), inputFilePath)
+       .catch(e => (console.log(e), null))
+ 
+ 
+     await createFiles(files, path.resolve(inputFilePath, '..'))
+ 
+     const createFiles = async (files, outPath) => {
+       console.log(files)
+       console.log(outPath)
+       await Promise.all(files.map(({ name, data }) =>
+         fs.writeFile(path.resolve(outPath, name), data, 'utf8')))
+         .then(e => vscode.window.showInformationMessage(`成功编译模板`))
+         .catch(e => vscode.window.showInformationMessage(`!失败!编译模板`))
+ 
+     } */
+  }
+
+
+
+
+
+
+
+
+
+  stateEstimate = async (from) => {
+    let fromInfo;
+    //
+    switch (from) {
+      case undefined:
+        fromInfo = '插件启动触发检查状态'
+        break;
+      case this.configs.add:
+        fromInfo = '发现新配置'
+        break;
+      case onConfigurationChanged:
+        fromInfo = 'onConfigurationChanged 配置更改触发检查状态'
+        break;
+      case onWorkspaceFoldersChanged:
+        fromInfo = 'onWorkspaceFoldersChanged 工作区更改触发检查状态'
+        break;
+    }
+    //
+    const workspaceFolders = vscode.workspace.workspaceFolders
+    const needActivate = workspaceFolders ? await (async () => {
+      const configs = (await this.configs.get()).map(str => path.dirname(str))
+      return workspaceFolders.some((folder) => {
+        const folderPath = folder.uri.fsPath
+        return configs.some(configPath => folderPath.length > configPath.length ?
+          folderPath.startsWith(configPath) : configPath.startsWith(folderPath)
+        )
+      })
+    })() : false
+    //
+    if (needActivate) this.activate()
+    else this.deactivate()
+  }
+
+
+
+
+
+
+
+
+
+  isActivate = false
+  key_showConsole = "VueSFCCompiler.showConsole"
+  funs_clearRegister = []
+  activate = () => {
+    if (this.isActivate) return;
+    this.isActivate = true;
+    //启动文件保存监听
+    const onDidSaveTextDocument = vscode.workspace.onWillSaveTextDocument(this.onWillSaveTextDocument)
+    this.funs_clearRegister.push(() => onDidSaveTextDocument.dispose())
+    //
+    vscode.commands.executeCommand('setContext', this.key_showConsole, this.isActivate)
+    //
+    vscode.window.showInformationMessage('VueSFCCompiler 工作区存在配置，已启动');
+  }
+
+
+
+
+
+
+
+
+
+  deactivate = () => {
+    if (!this.isActivate) return;
+    this.isActivate = false;
+    //
+    vscode.commands.executeCommand('setContext', this.key_showConsole, this.isActivate)
+    //
+    Promise.all(this.funs_clearRegister.map(fun => fun()))
+    this.funs_clearRegister = []
+    //
+    vscode.window.showInformationMessage('VueSFCCompiler 已关闭');
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /// 插件激活时
 exports.activate = function (context) {
-  appStateEstimate()
+  const app = new App(context)
 
-  const { ExtensionContext, commands, window, workspace, EventEmitter } = vscode;
+  //注册命令添加路径功能
+  context.subscriptions.push(
+    vscode.commands.registerCommand(app.key_command_addConfig, app.command_addConfig))
+  //注册命令清空路径功能
+  context.subscriptions.push(
+    vscode.commands.registerCommand(app.key_command_clearConfigs, app.command_clearConfigs))
+  // 监听是否有工作区变动 - 初始启动不会有触发
+  const onDidChangeWorkspaceFolders =
+    vscode.workspace.onDidChangeWorkspaceFolders(app.onWorkspaceFoldersChanged)
+//
+const onDidChangeActiveTextEditor =
+    vscode.window.onDidChangeActiveTextEditor((textEditor)=>{
+console.log("textEditor",textEditor)
+    })
 
-
-
-  // 基金类
-  //const provider = new Provider();
-  //require('./createVueApp')(context); // vueLoader
-  /* 
-    context.subscriptions.push(
-      vscode.commands.registerCommand('extension.createVueApp', action)
-    ); */
-
-  // 数据注册
-  //window.registerTreeDataProvider('console-panel', provider);
-  //注册侧边栏面板的实现
-  //const sidebar_test = new sidebar.EntryList();
-  //vscode.window.registerTreeDataProvider("sidebar_test_id1",sidebar_test);
-  //注册命令 
-  //vscode.commands.registerCommand("sidebar_test_id1.openChild",args => {
-  //vscode.window.showInformationMessage(args);
-  //});
-
-  vscode.window.showInformationMessage(`插件 测试 ${count++}`);
-  setTimeout(() => {
-    vscode.window.showInformationMessage(`插件 测试 ${count++}`);
-    setTimeout(() => {
-      vscode.window.showInformationMessage(`插件 测试 ${count++}`);
-      setTimeout(() => {
-        vscode.window.showInformationMessage(`插件 测试 ${count++}`);
-      }, 5000)
-    }, 5000)
-  }, 5000)
-  //// 其他内容保持不变
-}
+    const     onDidChangeVisibleTextEditors =
+    vscode.window.onDidChangeVisibleTextEditors((textEditors)=>{
+console.log("textEditors",textEditors)
+    })
 
 
-const appStateEstimate = async () => {
-  /**
-   * 未处理多工作区情况
-   * vscode.workspace.rootPath
-   */
-  const rootPath = vscode.workspace.rootPath //工作区目录
-  const configFileName = 'vuecompiler-config.json'
-  const configFilePath = path.resolve(rootPath, configFileName)
 
-  const config = await fs.readFile(configFilePath)
-    .then(r => JSON.parse(r))
-    .then(r => Array.isArray(r) ? r : null)
-    .catch(e => null)
-
-  if (config) app.activate()
-  //else appActivate
-}
-
-const app = {
-  isActivate: false,
-  onDidSaveTextDocument: null,
-
-  activate() {
-    if (this.isActivate) return;
-    this.isActivate = true;
-    this.onDidSaveTextDocument = vscode.workspace.onWillSaveTextDocument(onVueWillSave)
-
-  },
-
-  dispose() {
-    this.onDidSaveTextDocument.dispose()//停止监听
-    this.onDidSaveTextDocument = null
-  }
-
-}
-
-const onVueWillSave = async ({ document }) => {
-  const { uri, isDirty, languageId } = document
-
-  //判断是否为vue文件
-  if (!languageId === "vue" || !isDirty) return;
+  // 是否存在存储监听，如有则监听
+  const onDidChangeStorageFun = context?.globalState?._storage?.onDidChangeStorage
+  const onDidChangeStorage =
+    typeof onDidChangeStorageFun === 'function' && onDidChangeStorageFun(app.onDidChangeStorage)
 
 
-  console.log(document)
-  console.log(vscode.workspace.rootPath)
-
-  const inputFilePath = uri.fsPath;
-
-  const files = await vueCompiler(document.getText(), inputFilePath)
-    .catch(e => (console.log(e), null))
+  //初始检测
+  //app.stateEstimate()
 
 
-  await createFiles(files, path.resolve(inputFilePath, '..'))
+  context.subscriptions.push(vscode.commands.registerCommand('VueSFCCompiler.test', async () => {
+    console.log(`当前状态 ${app.isActivate}`)
+    //console.log(await app.configs.get())
+    //provider.refresh()
+    testPale.dispose()
+  }))
 
 
-}
+  let isShowConfigsConsole = false
+  vscode.commands.executeCommand('setContext', "VueSFCCompiler.isShowConfigsConsole", isShowConfigsConsole)
 
 
-const createFiles = async (files, outPath) => {
-  console.log(files)
-  console.log(outPath)
-  await Promise.all(files.map(({ name, data }) =>
-    fs.writeFile(path.resolve(outPath, name), data, 'utf8')))
-    .then(e => vscode.window.showInformationMessage(`成功编译模板`))
-    .catch(e => vscode.window.showInformationMessage(`!失败!编译模板`))
+  context.subscriptions.push(vscode.commands.registerCommand('VueSFCCompiler.openConfigsConsole', async () => {
+    vscode.commands.executeCommand('setContext', "VueSFCCompiler.isShowConfigsConsole", isShowConfigsConsole = !isShowConfigsConsole)
+  }))
 
-}
-
-const VueCompilerSFC = require('@vue/compiler-sfc');
-const hash_sum = require('hash-sum');
-const vueCompiler = async (source, inputFilePath) => {
-
-  const fileName = path.parse(inputFilePath).name;
-  const result = []
-  /////////////////////////////////////////////////////////////////
-  const id = hash_sum(inputFilePath + source);
-  const dataVId = 'data-v-' + id;
-  const parseResult = VueCompilerSFC.parse(source, { sourceMap: false });
-  const descriptor = parseResult.descriptor;
-  const hasScoped = descriptor.styles.some((s) => s.scoped);
-  /////////////////////////////////////////////////////////////////
-  // 处理 <script>
-  const script = VueCompilerSFC.compileScript(descriptor, {
-    id: id,
-    templateOptions: {
-      scoped: hasScoped,
-      compilerOptions: {
-        scopeId: hasScoped ? dataVId : undefined,
-      }
-    },
-  });
-
-  // 处理 <template>
-  const template = VueCompilerSFC.compileTemplate({
-    id: id,
-    source: descriptor.template.content,
-    scoped: hasScoped,
-    compilerOptions: {
-      bindingMetadata: script ? script.bindings : undefined,
-      scopeId: hasScoped ? dataVId : undefined,
-    }
-  });
-
-
-  const renderName = '_sfc_render';
-  const mainName = '_sfc_main';
-
-  //console.log(script.content)
-  //console.log(template.code)
-
-  // 处理 template 标签
-  const templateCode = template.code.replace(
-    /\nexport (function|const) (render|ssrRender)/,
-    '\n$1 _sfc_$2'
-  );
-
-  // 处理 script 标签
-  const scriptCode = VueCompilerSFC.rewriteDefault(script.content, mainName);
-
-  // 导出组件对象
-  const jsOutput = [
-    scriptCode,
-    templateCode,
-    mainName + '.render=' + renderName,
-    'export default ' + mainName,
-  ];
-
-  if (hasScoped) {
-    jsOutput.push(mainName + '.__scopeId = ' + JSON.stringify(dataVId));
-  }
-  const jsCode = jsOutput.join('\n');
-  /////////////////////////////////////////////////////////////////
-
-  // 处理 style 标签
-
-  /*  var styleCodes = [];
- 
-   if (styles.length) {
-     for (var i = 0; i < styles.length; i++) {
-       var styleItem = styles[i];
-       styleCodes.push(VueCompilerSFC.compileStyle({
-         source: styleItem.content,
-         id: dataVId,
-         scoped: styleItem.scoped,
-       }).code);
-     }
-   }
- 
-   var styleCode = styleCodes.join('\n');
-   var styleUrl = url + '.css'; */
-
-  const styles = descriptor.styles
-  const styleCodes = styles.map(styleItem =>
-    VueCompilerSFC.compileStyle({
-      source: styleItem.content,
-      id: dataVId,
-      scoped: styleItem.scoped,
-    }).code)
-  const styleCode = styleCodes.join('\n');
-
-  /////////////////////////////////////////////////////////////////
-  result.push({ name: `${fileName}.esm.js`, data: jsCode, type: "js" })
-  if (styleCodes.length)
-    result.push({ name: `${fileName}.css`, data: styleCode, type: "css" })
-
-  return result
-  /* 暂无作用，容易发生错误
-  styleCode = styleCode.replace(/url\(\s*(?:(["'])((?:\\.|[^\n\\"'])+)\1|((?:\\.|[^\s,"'()\\])+))\s*\)/g, function (match, quotes, relUrl1, relUrl2) {
-    return 'url(' + quotes + resolveUrl(relUrl1 || relUrl2, styleUrl) + quotes + ')';
-  }); */
-  /*
-  var styleSheet = new CSSStyleSheet();
-
-  styleSheet.replaceSync(styleCode);
-  document.adoptedStyleSheets = [...document.adoptedStyleSheets, styleSheet];
 
 
 
   /* 
    
-  
+   
+   
+    var thisProvider = {
+      async resolveWebviewView(thisWebview, thisWebviewContext, thisToke) {
+        console.log(thisWebview)
+        console.log(thisWebview.webview.postMessage)
+   
+        const html = await getWebViewContent(context, '/webview_sidebar/index.html')
+        console.log(html)
+        thisWebview.webview.options = { enableScripts: true }
+        thisWebview.webview.html = html;
+      }
+    };
+    context.subscriptions.push(
+      vscode.window.registerWebviewViewProvider("VueSFCCompiler.sidebarsss", thisProvider)
+    );
+   
+   
    */
 
-  /* 
-  
-  chrome.__VueCompilerSFC = VueCompilerSFC
-  chrome.__hash = hash
-  
-  
-  const vueSFCLoad = async (url) => {
-    const source = await fetch(url).then(r => r.text())
-    //
-    
-    
-    console.log(code);
-  
-    const scriptEl = document.createElement('script')
-    scriptEl.innerHTML = code
-    scriptEl.type = "module"
-    document.head.appendChild(scriptEl)
-  
-}
-
-
-const search = Object.fromEntries(location.search.slice(1).split("&").map(i => i.split("=")));
-//'/main/loding-infinity-circle/loding-infinity-circle.vue'
-//search.vue && vueSFCLoad(search.vue[0] === '/' ? search.vue : `/${search.vue}`);
-
- */
-}
 
 
 
-class Provider {
-  constructor() {
 
-  }
-  refresh() {
-    // 更新视图
-  }
-  //最终的子项
-  getTreeItem(element) {
-    //console.log(element)
-    return new vscode.TreeItem(element);
-  }
-
-  //列表
-  getChildren() {
-    const { workspace } = vscode;
-    console.log(1231231231)
-    console.log(this)
-    const { order } = this;
-    // 获取配置的基金代码
-    /* const favorites: string[] = workspace
-      .getConfiguration()
-      .get('fund-watch.favorites', []); */
-    const favorites = ["163407",
-      "161017"]
-    // 依据代码排序
-    return favorites.sort((prev, next) => (prev >= next ? 1 : -1) * order);
-  }
-
-}
-/* 
-{
-  "contributes": {
-    // 配置
-    "configuration": {
-      // 配置类型，对象
-      "type": "object",
-      // 配置名称
-      "title": "fund",
-      // 配置的各个属性
-      "properties": {
-        // 自选基金列表
-        "fund.favorites": {
-          // 属性类型
-          "type": "array",
-          // 默认值
-          "default": [
-            "163407",
-            "161017"
-          ],
-          // 描述
-          "description": "自选基金列表，值为基金代码"
-        },
-        // 刷新时间的间隔
-        "fund.interval": {
-          "type": "number",
-          "default": 2,
-          "description": "刷新时间，单位为秒，默认 2 秒"
-        }
-      }
+  class Provider {
+    refreshEvent = new vscode.EventEmitter()
+    constructor() {
+      this.onDidChangeTreeData = this.refreshEvent.event;
     }
+    data = []
+    async refresh() {
+      const configs = await app.configs.get()
+      this.data = configs
+      this.refreshEvent.fire(null);
+    }
+    //最终的子项
+    getTreeItem(element) {
+      //console.log(element)
+      return element
+    }
+
+    //列表
+    getChildren(element) {
+      //console.log("element", element)
+      let provider
+      if (element) {
+        const config = element.contextValue
+        provider = ["rootDir", "outDir", "isMergeCss"].map(key => {
+          const item = new vscode.TreeItem(config[key]);
+          const value = config[key].toString()
+          item.label = key
+          item.description = value
+          item.tooltip = value
+          item.contextValue = value
+          //item.resourceUri =new vscode.Uri('file','',config.rootDir)
+          //item.command= { command: 'fileExplorer.openFile', title: "Open File", arguments: [vscode.Uri.file(value)], };
+          return item
+        })
+      } else {
+        provider = this.data.map(config => {
+          const item = new vscode.TreeItem(config.rootDir, vscode.TreeItemCollapsibleState.Expanded);
+          item.label = path.basename(config.rootDir)
+          item.tooltip = config.rootDir
+          item.contextValue = config
+          item.description = config.rootDir
+          return item
+        })
+      }
+      return provider
+    }
+
   }
+
+  const provider = new Provider();
+  provider.refresh()
+  console.log(provider)
+  // 数据注册
+  vscode.window.registerTreeDataProvider("VueSFCCompiler.sidebar", provider);
+  //注册侧边栏面板的实现
+  //const sidebar_test = new sidebar.EntryList();
+  //vscode.window.registerTreeDataProvider("sidebar_test_id1",sidebar_test);
+
+  console.log("context", context)
+  console.log("vscode", vscode)
+
+  //注册命令 
+  vscode.commands.registerCommand("fileExplorer.openFile", (...args) => {
+    console.log(args)
+
+  });
+
+
+  class Providerxx {
+    refreshEvent = new vscode.EventEmitter()
+    constructor() {
+      this.onDidChangeTreeData = this.refreshEvent.event;
+    }
+    data = []
+    async refresh() {
+      const configs = await app.configs.get()
+      this.data = configs
+      this.refreshEvent.fire(null);
+    }
+    //最终的子项
+    getTreeItem(element) {
+      //console.log(element)
+      return element
+    }
+
+    //列表
+    getChildren(element) {
+      //console.log("element", element)
+      let provider
+      provider = ["321", "32131", "3213"].map(key => {
+        const item = new vscode.TreeItem(key)
+        item.label = key
+        item.tooltip = key
+        item.contextValue = key
+        item.description = key
+        item.iconPath = new vscode.ThemeIcon("diff-added")
+        item.command = { command: 'fileExplorer.openFile', title: "Open File", arguments: [312312312] };
+        return item
+      })
+      /* 
+        provider = this.data.map(config => {
+          const item = new vscode.TreeItem(config.rootDir, vscode.TreeItemCollapsibleState.Expanded);
+          item.label = path.basename(config.rootDir)
+          item.tooltip = config.rootDir
+          item.contextValue = config
+          item.description = config.rootDir
+          return item 
+        })
+        */
+      console.log(provider)
+      return provider
+    }
+
+  }
+
+
+   vscode.window.registerTreeDataProvider("VueSFCCompiler.testPale", new Providerxx());
+   //const testPale = vscode.window.registerTreeDataProvider("VueSFCCompiler.configsConsole", new Providerxx());
+   const  providerxx= new Providerxx()
+   const testPale = vscode.window.createTreeView("VueSFCCompiler.configsConsole", {
+    treeDataProvider: providerxx
+  });
+
+  console.log("providerxx",providerxx)
+  console.log("testPale",testPale)
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * 插件被释放时触发
  */
+exports.deactivate = function () {
+  vscode.window.showInformationMessage('VueSFCCompiler 已退出');
+};

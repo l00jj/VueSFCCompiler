@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <script src="../node_modules/vue/dist/vue.global.js"></script>
+    <style>
+        #app {
+            margin: 20px;
+        }
+
+        input {
+            padding: 0.5em 1em;
+            background: var(--vscode-input-background);
+            border: 1px solid var(--vscode-input-border);
+            color: var(--vscode-input-foreground);
+        }
+
+        input::placeholder {
+            color: var(--vscode-input-placeholderForeground);
+        }
+
+        .form {
+            padding-top: 4em;
+        }
+
+        section {
+            display: flex;
+            position: relative;
+            flex-direction: column;
+            padding-bottom: 2em;
+            margin-bottom: 2em;
+            border-bottom: 1px solid var(--vscode-tree-tableColumnsBorder);
+        }
+
+        section:first {
+            padding-top: 0;
+        }
+
+        .merge-option {
+            cursor: pointer;
+        }
+
+        .merge-option>* {
+            margin-left: 1em;
+        }
+
+        h2 {
+            color: var(--vscode-textLink-foreground);
+        }
+
+        button {
+            background: var(--vscode-button-background);
+            border: 1xp solid var(--vscode-button-border);
+            color: var(--vscode-button-foreground);
+            padding: 0.85em 7em;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: var(--vscode-button-hoverBackground);
+        }
+
+        button:disabled {
+            opacity: 0.25;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <h2>说明</h2>
+        <div>
+            <p>可在左侧资源管理器中选中文件夹[右键->复制路径]黏贴到输入框中</p>
+            <p>rootDir 文件夹内所有 vue 文件将会被编译到 outDir 对应的路径中</p>
+            <p>[rootDir]/test/index.vue</p>
+            <p> --> [outDir]/test/index.js</p>
+            <p> --> [outDir]/test/index.css</p>
+        </div>
+        <div class="form">
+            <h2>配置</h2>
+            <section>
+                <h3>填写输入文件夹 rootDir (请填写绝对路径)</h3>
+                <input v-model="config.rootDir" placeholder="填写输入文件夹-rootDir" />
+            </section>
+            <section>
+                <h3>填写输出文件夹 outDir (请填写绝对路径)</h3>
+                <input v-model="config.outDir" placeholder="填写输出文件夹-outDir" />
+            </section>
+            <section>
+                <div class="merge-option">
+                    <input type="checkbox" id="isMergeCss" v-model="config.isMergeCss" />
+                    <label for="isMergeCss">是否合并全部css到 [outDir]/index.css</label>
+                </div>
+            </section>
+            <div>
+                <button @click="postConfig" :disabled="!isAllowedPost">[+]添加配置</button>
+            </div>
+        </div>
+    </div>
+</body>
+
+
+<script type="module">
+    const vscode = acquireVsCodeApi();
+    const { createApp, toRaw } = Vue
+    const vm = createApp({
+        data() {
+            return {
+                isAllowedPost: true,
+                config: {
+                    //"rootDir": "","outDir": "",
+                    "rootDir": "/Volumes/Work/l00/VueSFCCompiler-repository/test/test/j/a",
+                    "outDir": "/Volumes/Work/l00/VueSFCCompiler-repository/test/test/out",
+                    "isMergeCss": false,
+                }
+            }
+        },
+        methods: {
+            postConfig() {
+                vscode.postMessage({ config: toRaw(this.config) });
+            }
+        }
+    }).mount('#app');
+</script>
+
+</html>
